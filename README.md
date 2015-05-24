@@ -12,7 +12,7 @@ Some credited in code, google is my co-pilot.
 
 install the WebApi.groovy SmartApp, enable oAuth, and generate your bearer channel/endpoint uri - you'd use a process similar to that shown here http://community.smartthings.com/t/tutorial-creating-a-rest-smartapp-endpoint/4331 - review the docs here http://docs.smartthings.com/en/latest/smartapp-web-services-developers-guide/implementation.html 
 
-Once you have your bearer code and endpoint uri, edit the put them into echosmart.js on lines 21/23
+Once you have your bearer code and endpoint uri, put them into echosmart.js on lines 21/23
 
 Start the bridge on your local network 
 
