@@ -18,12 +18,12 @@ var ip = require('ip').address()
 var port = settings.serviceport;
 
 // magic values
-var AUTH =  "Bearer uuid"
-var SMARTAPP = "https://graph.api.smartthings.com/api/smartapps/installations/yyyyyy"
+var AUTH =  "Bearer uuid"  // change to use your oauth bearer UUID
+
+var SMARTAPP = "https://graph.api.smartthings.com/api/smartapps/installations/uuid" // change to use your oauth endpoint
 
 // Credit to Sagen here - the UPnP M-SEARCH response
 // taken from https://github.com/sagen/hue-upnp
-
 
 exports.addRoutes = function(server) {
 };
@@ -73,7 +73,7 @@ USN: uuid:Socket-1_0-221438K0100073::urn:Belkin:device:**\r\n\r\n"
 
 };
 
-
+// return bridge info 
 var bridgejson = '{\
     "name": "Philips hue",\
     "zigbeechannel": 15,\
@@ -123,7 +123,7 @@ var bridgejson = '{\
     }\
 }';
 
-
+// return UPNP info (Wemo that thinks its a Hue)
 var bridgexml='<root xmlns="urn:schemas-upnp-org:device-1-0">\
    <specVersion>\
       <major>1</major>\
@@ -171,24 +171,26 @@ var bridgexml='<root xmlns="urn:schemas-upnp-org:device-1-0">\
 </root>';
 
 
-// my ST "lights" - just switchs
+// my ST "lights" - just switches, YMMV - dynamically pulled from system
 
 var lights;
-
 
 function emptycb() {
     console.log("lights fetched");
 }   
 
-// get all light status 
+// get all light status on startup
 fetchlights(emptycb);
 makeserver();
 exports.enableDiscovery();
 
 // get map of light device id + name (order of lights will be HUE light #)
-// assumes webapi installed and oath credentials below
+// assumes webapi installed/publshed and oath credentials valid above
 function fetchlights(cb) {
-	    var req = {"headers": {"Content-Type": "application/json", "Authorization": AUTH},
+	
+	// this query is looking just for switches, if you have other device types that
+	// echo can turn on/off/dim, you could get those here instead or in addition
+	var req = {"headers": {"Content-Type": "application/json", "Authorization": AUTH},
                  "uri": SMARTAPP + "/details/switch"};
         
         var sendreq = {};
@@ -196,40 +198,39 @@ function fetchlights(cb) {
         sendreq.uri = req.uri;
         sendreq.method = "GET";
         sendreq.followRedirect = true;
-		request(sendreq, function (err, res, body) {
-            // console.log("SUCCESS: ", err);
+	request(sendreq, function (err, res, body) {
             try {
                 var jlights = JSON.parse(body);
                 if (jlights.hasOwnProperty("devices")) {
                     lights = jlights.devices;
-				}
-			 } catch (e) {
+		}
+	    } catch (e) {
                 console.log(e);
                 console.log(body);
             }
-            cb()
+            cb(); // call the callback once all "lights" are fetched
         });
 }
 
 // set a light on/off/dim
 function setLight(dev,staterec) {
-	    var req = {"headers": {"Content-Type": "application/json", "Authorization": AUTH},
+	var req = {"headers": {"Content-Type": "application/json", "Authorization": AUTH},
                  "uri": SMARTAPP + "/" + dev};
                 
         var sendreq = {};
-        var bodyStr = JSON.stringify({state: staterec},
-                               undefined, 0);
+        var bodyStr = JSON.stringify({state: staterec}, undefined, 0);
         sendreq.body = bodyStr;
 
         sendreq.headers = req.headers;
         sendreq.uri = req.uri;
         sendreq.method = "PUT";
         sendreq.followRedirect = true;
-		request(sendreq, function (err, res, body) {
+	request(sendreq, function (err, res, body) {
             //console.log("SUCCESS PUT: ", err);
         });
     
 }
+
 
 function makeserver() {
     // create the server - callback called when requests come in
@@ -261,20 +262,18 @@ function makeserver() {
                 if (action == "description.xml") {
                     // return config
                     response.writeHead(200, { 'Content-Type': 'application/xml' });
-                    //[{"success":{"username": "1234567890"}}]
                     bridgexml = bridgexml.replace("BASEIP", require('ip').address()).replace("BASEPORT", settings.serviceport);
                     response.end(bridgexml);
                 } else
                     if ((action == "api") && (a3 == "config")) {
                         // return config
                         response.writeHead(200, { 'Content-Type': 'application/json' });
-                        //[{"success":{"username": "1234567890"}}]
                         bridgejson = bridgejson.replace("BASEIP", require('ip').address()).replace("BASEPORT", settings.serviceport);
                         response.end(bridgejson);
 
                     }
                 if ((action == "api") && (a3 == "lights")) {
-                    // return "fresh" lights
+                    // return "fresh" lights - we fetch status on every request
                     fetchlights(function () {
                         response.writeHead(200, { 'Content-Type': 'application/json' });
                         response.write("{")
@@ -341,9 +340,9 @@ function makeserver() {
                 request.on('end', processPOST);
 
                 function processPOST() {
-                        
+                    // POST used to reguster user name, we just accept anything :)    
                     // debugging
-                    console.log("rl: " + req.length + " Data: " + requestBody);
+                    // console.log("rl: " + req.length + " Data: " + requestBody);
 
                     var rec = JSON.parse(requestBody);
 
@@ -356,8 +355,6 @@ function makeserver() {
                         response.end(JSON.stringify([{ "success": { "username": user } }], undefined, 1));
                     }
                 }
-
-
             }
         }
         catch (e) {
@@ -365,11 +362,6 @@ function makeserver() {
             console.log(e.stack);
             response.writeHead(400, request.method + " not supported", { 'Content-Type': 'text/html' });
             response.end('<html><head><title>400</title></head><body>400: OOPS!</body></html>');
-
         }
-
-
     }
-
-
 }
