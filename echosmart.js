@@ -39,8 +39,8 @@ exports.enableDiscovery = function() {
         s.on('message', function(msg, rinfo) {
             var msgString = msg.toString();
             if (msgString.substr(0, 10) == 'M-SEARCH *') {
-                console.log('M-SEARCH Message received')
-                console.log(rinfo);
+                //console.log('M-SEARCH Message received')
+                //console.log(rinfo);
                 var response = "HTTP/1.1 200 OK\r\n\
 CACHE-CONTROL: max-age=100\r\n\
 EXT:\r\n\
@@ -203,6 +203,7 @@ function fetchlights(cb) {
                 var jlights = JSON.parse(body);
                 if (jlights.hasOwnProperty("devices")) {
                     lights = jlights.devices;
+//console.log(lights);
 		}
 	    } catch (e) {
                 console.log(e);
@@ -247,7 +248,17 @@ function makeserver() {
     function onRequest(request, response) {
 
         var parsedreq = urlparser.parse(request.url, true);
-        console.log(request.url);
+
+  var ipAddress = null;
+  var forwardedIpsStr = request.headers['x-forwarded-for'];
+  if (forwardedIpsStr) {
+    ipAddress = forwardedIpsStr[0];
+  }
+  if (!ipAddress) {
+    ipAddress = request.connection.remoteAddress;
+  }
+        //console.log(request.url + " from " + ipAddress);
+
         var req = parsedreq.pathname.split("/");
 
         var requestBody = '';
@@ -255,6 +266,8 @@ function makeserver() {
         var a2 = req[2];
         var a3 = req[3];
         var a4 = req[4];
+
+//console.log("Action is: " + action + " req len = " + req.length);
 
         try {
             if (request.method == "GET") {
@@ -272,7 +285,60 @@ function makeserver() {
                         response.end(bridgejson);
 
                     }
-                if ((action == "api") && (a3 == "lights")) {
+                if ((action == "api") && (a3 == "groups")) {
+			// assume groups/0
+			/*{
+  "action":
+  {
+    "on":false,
+    "bri":254,
+    "hue":14922,
+    "sat":144,
+    "xy":[0.4595,0.4105],
+    "ct":369,
+    "effect":"none",
+    "colormode":"ct"
+  },
+  "lights": ["1","2","3"],
+  "name": "Lightset 0"
+}
+*/
+			fetchlights(function () {
+                        response.writeHead(200, { 'Content-Type': 'application/json' });
+                        response.write('{"action": { "on":false, "bri":254, "hue":14922, "sat":144, "xy":[0.4595,0.4105], "ct":369, "effect":"none", "colormod
+e":"ct" }, "lights":[');
+			// all lights
+                            var i; 
+                            for (i = 0; i < lights.length; i++) {
+				response.write('"' + (i + 1) + '"');
+				if (i < lights.length-1) response.write(",");
+			    }
+			response.end('], "name": "Lightset 0" }');
+			});
+
+		}
+                if ((action == "api") && (req.length == 3)) {
+                    fetchlights(function () {
+                        response.writeHead(200, { 'Content-Type': 'application/json' });
+                        response.write('{"lights":{');
+                            // all lights
+                            var i;
+                            for (i = 0; i < lights.length; i++) {
+                                if (i != 0) response.write(',');
+				if (!lights[i].state.hasOwnProperty("level")) lights[i].state["level"]=99;
+                                response.write('"' + (i + 1) + '": { "state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + M
+ath.floor(255 * lights[i].state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
+        "alert": "none","effect": "none","colormode": "xy", "reachable": true},"type": "Extended color light",\
+        "name": "'+ lights[i].label + '", "modelid": "LCT001","swversion": "66009461", "pointsymbol": {\
+            "1": "none", "2": "none", "3": "none","4": "none", "5": "none","6": "none","7": "none","8": "none" }}');
+			    }
+                        bridgejson = bridgejson.replace("BASEIP", require('ip').address()).replace("BASEPORT", settings.serviceport);
+                        response.write('  }, "groups": {} , "schedules": {}, "config":');
+			response.write(bridgejson);
+			response.end("}");
+		    });
+
+                } else if ((action == "api") && (a3 == "lights")) {
                     // return "fresh" lights - we fetch status on every request
                     fetchlights(function () {
                         response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -281,8 +347,10 @@ function makeserver() {
                             // all lights
                             var i;
                             for (i = 0; i < lights.length; i++) {
+				if (!lights[i].state.hasOwnProperty("level")) lights[i].state["level"]=99;
                                 if (i != 0) response.write(',');
-                                response.write('"' + (i + 1) + '": { "state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + Math.floor(255 * lights[i].state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
+                                response.write('"' + (i + 1) + '": { "state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + M
+ath.floor(255 * lights[i].state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
         "alert": "none","effect": "none","colormode": "xy", "reachable": true},"type": "Extended color light",\
         "name": "'+ lights[i].label + '", "modelid": "LCT001","swversion": "66009461", "pointsymbol": {\
             "1": "none", "2": "none", "3": "none","4": "none", "5": "none","6": "none","7": "none","8": "none" }}');
@@ -290,7 +358,14 @@ function makeserver() {
                         } else {
                             // one light
                             var i = parseInt(a4) - 1;
-                            response.write('"state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + Math.floor(255 * lights[i].state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
+				if (!lights[i].state.hasOwnProperty("level")) lights[i].state["level"]=99;
+                            //console.log('"state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + Math.floor(255 * lights[i].
+state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
+        "alert": "none","effect": "none","colormode": "xy", "reachable": true},"type": "Extended color light",\
+        "name": "'+ lights[i].label + '", "modelid": "LCT001","swversion": "66009461", "pointsymbol": {\
+            "1": "none", "2": "none", "3": "none","4": "none", "5": "none","6": "none","7": "none","8": "none" }');
+                            response.write('"state": {"on": ' + ((lights[i].state.switch == "on") ? "true" : "false") + ',"bri":' + Math.floor(255 * lights[i]
+.state.level / 100) + ',"hue": 13088,"sat": 212, "xy": [0.5128,0.4147],"ct": 467,\
         "alert": "none","effect": "none","colormode": "xy", "reachable": true},"type": "Extended color light",\
         "name": "'+ lights[i].label + '", "modelid": "LCT001","swversion": "66009461", "pointsymbol": {\
             "1": "none", "2": "none", "3": "none","4": "none", "5": "none","6": "none","7": "none","8": "none" }');
@@ -300,6 +375,7 @@ function makeserver() {
                     });
                 }
             } else if (request.method == "PUT") {
+		//console.log("got put request");
                 /*
                 http://<bridge ip address>/api/newdeveloper/lights/1/state
                         Body 	{"on":true, "sat":255, "bri":255,"hue":10000}
@@ -314,6 +390,7 @@ function makeserver() {
                 request.on('end', processPut);
 
                 function processPut() {
+			//console.log(requestBody);
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     if ((action == "api") && (a3 == "lights") && (req.length == 6)) {
                         var i = parseInt(a4) - 1;
@@ -321,7 +398,7 @@ function makeserver() {
                         var rec = JSON.parse(requestBody);
                         if (rec.hasOwnProperty("on")) { state["switch"] = rec.on ? "on" : "off"; }
                         if (rec.hasOwnProperty("bri")) { state["level"] = Math.floor((100 * rec.bri) / 255); }
-                        console.log(state);
+                        //console.log(state);
                         setLight(lights[i].id, state);
 
                     }
@@ -340,9 +417,11 @@ function makeserver() {
                 request.on('end', processPOST);
 
                 function processPOST() {
+		//console.log("got POST request");
                     // POST used to reguster user name, we just accept anything :)    
                     // debugging
                     // console.log("rl: " + req.length + " Data: " + requestBody);
+                    //console.log(" Data: " + requestBody);
 
                     var rec = JSON.parse(requestBody);
 
